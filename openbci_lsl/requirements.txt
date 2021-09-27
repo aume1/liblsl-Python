@@ -1,0 +1,5 @@
+numpy
+pylsl==1.10.5
+pyqtgraph==0.9.10
+scipy
+pyserial==3.1.1
