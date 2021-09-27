@@ -10,6 +10,7 @@ __pycache__
 *.dylib
 *.cprof
 *.png
+*.npy
 /wheelhouse/
 /pylsl/include
 /pylsl/lib
