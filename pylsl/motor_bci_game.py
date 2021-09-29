@@ -1,6 +1,11 @@
+import copy
+import time
+
 import pygame
 from pygame.locals import *
 import random
+from ctypes import windll
+SetWindowPos = windll.user32.SetWindowPos
 
 fps = 60
 
@@ -25,7 +30,6 @@ class Player(pygame.sprite.Sprite):
         self.max_x = screen_size[0] - self.rect.width
         self.max_y = screen_size[1] - self.rect.height
         self.keys = {'l': False, 'r': False}
-        self.score = -1
 
     def add_to_group(self, group=None):
         if group is None:
@@ -36,17 +40,8 @@ class Player(pygame.sprite.Sprite):
     def remove_from_group(self):
         pygame.sprite.Group().remove(self)
 
-    def handle_keys(self, event):
-        if event.type == pygame.KEYDOWN:
-            if event.key in self.right_keys:
-                self.keys['r'] = True
-            elif event.key in self.left_keys:
-                self.keys['l'] = True
-        elif event.type == pygame.KEYUP:
-            if event.key in self.left_keys:
-                self.keys['l'] = False
-            elif event.key in self.right_keys:
-                self.keys['r'] = False
+    def handle_keys(self, left_right: tuple):
+        self.keys['l'], self.keys['r'], *_ = left_right
 
     def update(self, *args, **kwargs):
         if self.keys['l'] and not self.keys['r']:
@@ -89,13 +84,12 @@ class Player(pygame.sprite.Sprite):
         surface.blit(self.image, (self.rect.x, self.rect.y))
 
     def collide(self, sprite_group):
-        if pygame.sprite.spritecollide(self, sprite_group, False):
-            self.score += 1
-            print(self.score)
+        return
 
 
 class Enemy(pygame.sprite.Sprite):
     VEL = 300
+    # scores = [-1]
 
     def __init__(self, screen_size):
         pygame.sprite.Sprite.__init__(self)
@@ -106,6 +100,7 @@ class Enemy(pygame.sprite.Sprite):
         self.dt = 1/fps
         self.max_x = screen_size[0] - self.rect.width
         self.max_y = screen_size[1] - self.rect.height
+        self.scores = [-1]
 
     def add_to_group(self, group=None):
         if group is None:
@@ -119,7 +114,8 @@ class Enemy(pygame.sprite.Sprite):
     def update(self, *args, **kwargs):
         self.rect.y = self.rect.y + int(self.dt*self.VEL)
         if self.rect.y > self.max_y:
-            print('Game over!')
+            print('resetting score!\n0')
+            self.scores.append(0)
             self.reset()
 
         if isinstance(args[0], pygame.Surface):
@@ -137,41 +133,127 @@ class Enemy(pygame.sprite.Sprite):
 
     def collide(self, sprite_group):
         if pygame.sprite.spritecollide(self, sprite_group, False):
+            self.scores[-1] += 1
+            print(self.scores[-1])
             self.reset()
 
 
+class Game:
+    def __init__(self):
+        pygame.init()
+        self.screen = pygame.display.set_mode(size=[1280, 720])
+        pygame.display.set_caption("MTRN4093 - EEG BCI")
+        time.sleep(0.5)
+        hwnd = pygame.display.get_wm_info()['window']
+        SetWindowPos(hwnd, -1, 0, 0, 0, 0, 2|1)
+
+        self.clock = pygame.time.Clock()
+
+        self.sprites = pygame.sprite.Group()
+        self.p1 = Player(self.screen.get_size())
+        self.p1.add_to_group(self.sprites)
+        self.e = Enemy(self.screen.get_size())
+        self.e.add_to_group(self.sprites)
+        self.running = True
+
+    def start(self):
+        import threading
+        self.running = True
+        threading.Thread(target=self.run).start()
+
+    def iter(self):
+        print(pygame.event.get())
+
+    def run_keyboard(self, run_time=10):
+        end_time = run_time + time.time()
+        while end_time > time.time():
+            self.clock.tick(fps)
+            pygame.event.get()
+            keys = "{0:b}".format(pygame.key.get_mods())
+
+            self.p1.handle_keys((int(keys[6]), int(keys[5])))  # sends the left and right keys to
+            if self.running:
+                self.screen.fill((255, 255, 255))
+                for block in self.sprites:
+                    self.sprites.remove(block)
+                    block.collide(self.sprites)
+                    self.sprites.add(block)
+                self.p1.update(self.screen)
+                self.e.update(self.screen)
+                pygame.display.flip()
+
+    def run_eeg(self, run_time=10):
+        end_time = run_time + time.time()
+        while end_time > time.time():
+            self.clock.tick(fps)
+            pygame.event.get()
+            if self.running:
+                self.screen.fill((255, 255, 255))
+                for block in self.sprites:
+                    self.sprites.remove(block)
+                    block.collide(self.sprites)
+                    self.sprites.add(block)
+                self.p1.update(self.screen)
+                self.e.update(self.screen)
+                pygame.display.flip()
+
+    def quit(self):
+        pygame.quit()
+
+
 def main():
-    pygame.init()
-    screen = pygame.display.set_mode(size=[1280, 720])
-    pygame.display.set_caption("MTRN4093 - EEG BCI")
-
-    clock = pygame.time.Clock()
-
-    sprites = pygame.sprite.Group()
-    p1 = Player(screen.get_size())
-    p1.add_to_group(sprites)
-    e = Enemy(screen.get_size())
-    e.add_to_group(sprites)
-
-    running = True
-    while running:
-        clock.tick(fps)
-        events = pygame.event.get()
-        for event in events:
-            if event.type == pygame.QUIT:
-                running = False
-                pygame.quit()
-            if event.type in (pygame.KEYUP, pygame.KEYDOWN):
-                p1.handle_keys(event)
-        if running:
-            screen.fill((255, 255, 255))
-            for block in sprites:
-                sprites.remove(block)
-                block.collide(sprites)
-                sprites.add(block)
-            p1.update(screen)
-            e.update(screen)
-            pygame.display.flip()
+    game = Game()
+    # while True:
+    #     pygame.event.get()
+    #     keys = "{0:b}".format(pygame.key.get_mods())
+    #     # print(keys)
+    #     if int(keys[5]):
+    #         print('RCTRL')
+    #     elif int(keys[6]):
+    #         print('LCTRL')
+    #     # for i in range(1, len(keys)):
+    #     #     if keys[i] == '1':
+    #     #         print(i)
+    #     # print(pygame.key.get_pressed())
+    game.start()
+    while True:
+        game.iter()
+    # pygame.init()
+    # screen = pygame.display.set_mode(size=[1280, 720])
+    # pygame.display.set_caption("MTRN4093 - EEG BCI")
+    # time.sleep(0.5)
+    # hwnd = pygame.display.get_wm_info()['window']
+    # SetWindowPos(hwnd, -1, 0, 0, 0, 0, 2|1)
+    #
+    # clock = pygame.time.Clock()
+    #
+    # sprites = pygame.sprite.Group()
+    # p1 = Player(screen.get_size())
+    # p1.add_to_group(sprites)
+    # e = Enemy(screen.get_size())
+    # e.add_to_group(sprites)
+    #
+    # running = True
+    # # end_time = time.time() + 20
+    # while running:# and end_time > time.time():
+    #     clock.tick(fps)
+    #     events = pygame.event.get()
+    #     for event in events:
+    #         if event.type == pygame.QUIT:
+    #             running = False
+    #             pygame.quit()
+    #         if event.type in (pygame.KEYUP, pygame.KEYDOWN):
+    #             p1.handle_keys(event)
+    #     if running:
+    #         screen.fill((255, 255, 255))
+    #         for block in sprites:
+    #             sprites.remove(block)
+    #             block.collide(sprites)
+    #             sprites.add(block)
+    #         p1.update(screen)
+    #         e.update(screen)
+    #         pygame.display.flip()
+    print('scores:', game.e.scores)
 
 
 if __name__ == "__main__":
