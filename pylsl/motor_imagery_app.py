@@ -2,6 +2,7 @@
 import threading
 
 # import pygame
+from sklearn.preprocessing import OneHotEncoder
 
 from pylsl import StreamInlet, resolve_stream
 import numpy as np
@@ -14,6 +15,7 @@ import warnings
 from statistics import mode
 from datetime import datetime
 import sys
+import os
 import models
 
 warnings.filterwarnings('error')
@@ -122,6 +124,7 @@ class EEG:
         self.keyboard_inlet = StreamInlet(self.keyboard[0])
         self.eeg_dataset = np.empty((0, 11))  # of the format [channel0, c1, ..., timestamp, left_shift, right_shift]
         self.filtered = np.empty((0, 11))
+        self.fft = np.empty((0, 8*self.data_length+2))
         self.keys = None
 
         self.running = False
@@ -134,6 +137,8 @@ class EEG:
 
     def __gather(self):
         self.running = True
+        # count = 0
+        # prev_dl = [0]*self.data_length
         while self.running:
             # get a new sample (you can also omit the timestamp part if you're not
             # interested in it)
@@ -148,41 +153,94 @@ class EEG:
             self.filtered = np.append(self.eeg_dataset, data, axis=0)
             self.filtered = my_filter(self.eeg_dataset, self.filtered)
 
+            # prev_dl = np.roll(prev_dl, 8)
+            # prev_dl[:8] = self.filtered[-1][:-3]
+            if len(self.filtered) > self.data_length:
+                prev_dl = np.array([self.filtered[i][:-3] for i in range(self.data_length)]).flatten()
+                norm = normalise_eeg(prev_dl)
+                add = np.append(np.fft.fft(norm).real, self.filtered[-1][-2:])
+                # print(add)
+                self.fft = np.append(self.fft, [add], axis=0)
+            # count += 1
+
     def train(self, classifier='KNN'):
         thread = threading.Thread(target=self.__train, args=(classifier, ))
         thread.start()
         return thread
 
-    def __train(self, classifier='KNN'):
+    def __train(self, classifier='KNN', include_historical=False):
         print('data recording complete. building model... (this may take a few moments)')
-        c = ['Cz', 'Fpz', 'C1', 'C2', 'C3', 'C4', 'CP1', 'CP2', 'time', 'left', 'right']
-        filtered = self.filtered.copy()
-        np.random.shuffle(filtered)
-        filtered = filtered[:int(len(filtered)/10)]
-        eeg = pd.DataFrame(filtered, columns=c)
+        # c = ['Cz', 'Fpz', 'C1', 'C2', 'C3', 'C4', 'CP1', 'CP2', 'time', 'left', 'right']
+        # print('reading historical data...')
+        # X_in = []
+        # X_in = [self.filtered.copy()]
+        # print(f'{X_in=}')
+        X_normal = []
+        Y = []
+        # print('processing', end='')
+        # for i, filtered in enumerate(X_in):
+        #     print('operating on data', i, end='')
+        #     # print(filtered.shape)
+        #     # print('.', end='')
+        #     # filtered = self.filtered.copy()
+        #     # np.random.shuffle(filtered)
+        #     # filtered = filtered[:int(len(filtered)/10)]
+        #     # eeg = pd.DataFrame(filtered, columns=c)
+        #
+        #     dl = 100
+        #     # eeg_np = filtered
+        #     prev_dl = np.array([filtered[i][:-3] for i in range(dl)]).flatten()
+        #     X_fft = []
+        #     print(end='.')
+        #     for row in range(dl, len(filtered)):
+        #         prev_dl = np.append(filtered[row][:-3], np.roll(prev_dl, 8)[8:])
+        #         norm = normalise_eeg(prev_dl)
+        #         X_fft += [np.fft.fft(norm).real]
+        #     X_normal += X_fft
+        filtered = self.fft
+        print(end='.')
+        Y_i = [[0], [1], [2], [3]] + [[2*filtered[i][-2] + filtered[i][-1]] for i in range(len(filtered))]
+        print(end='.')
+        enc = OneHotEncoder()
+        enc.fit(Y_i)
+        out = enc.transform(Y_i).toarray()[4:]
+        print(f'{out=}')
+        Y = out#np.array(Y + out).squeeze(axis=0)
+        print(f'{Y=}')
+        print()
+        X_normal = [self.fft[i][:-2] for i in range(len(self.fft))]
 
-        dl = 100
-        eeg_np = filtered
-        prev_dl = np.array([filtered[i][:-3] for i in range(dl)]).flatten()
+        if include_historical:
+            hist_fft = [f for f in os.listdir('users/data') if 'fft_' + self.user_id in f]
+            # hist_filt = [f for f in os.listdir('users/data') if 'fmi_' + self.user_id in f]
+            print(f'loading {hist_fft}')
+            data = [np.load('users/data/' + f) for f in hist_fft]
+            X_normal += [dat[:, :-2] for dat in data]
+            shape = (sum([len(i) for i in data]), 2)
+            Y_i = np.array([dat[:, -2:] for dat in data])
+            Y_o = []
+            print(Y_i)
+            for i in range(len(data)):
+                Y_o = np.append(Y_o, [Y_i[i]], axis=0)
+            print(Y_i.shape)
+            Y_i = Y_o
+            # print(Y_i)
+            # Y_i = np.reshape(Y_i, (len(Y_i)/2, 2))
+            # print(Y_i)
+            Y_i = [[0], [1], [2], [3]] + [[2*Y_i[i][-2] + Y_i[i][-1]] for i in range(len(Y_i))]
+            print(Y_i)
+            enc = OneHotEncoder()
+            enc.fit(Y_i)
+            out = enc.transform(Y_i).toarray()[4:]
+            Y += out
+            # hist_y = [hist_fft[i][-2:] for i in range(len(hist_fft))]
+            # Y += hist_y
+            # print('shapes:')
+            # for i in X_in:
+            #     print(i.shape)
 
-        X = []
-        X_fft = []
-        for row in range(dl, len(eeg.index)):
-            prev_dl = np.roll(prev_dl, 8)
-            prev_dl[:8] = eeg_np[row][:-3]
-            norm = normalise_eeg(prev_dl)
-            X += [norm]
-            X_fft += [np.fft.fft(norm).real]
-        X_normal = X_fft
-
-        Y = eeg[['left', 'right']].copy()
-        Y['only_right'] = Y.apply(lambda row: 1 if row['right'] and not row['left'] else 0, axis=1)
-        Y['only_left'] = Y.apply(lambda row: 1 if row['left'] and not row['right'] else 0, axis=1)
-        Y['none'] = Y.apply(lambda row: 1 if not row['left'] and not row['right'] else 0, axis=1)
-        Y['both'] = Y.apply(lambda row: 1 if row['left'] and row['right'] else 0, axis=1)
-        del Y['left'], Y['right']
-        Y = Y.to_numpy()[dl:]
-
+        print(f'{Y=}')
+        print(f'{len(X_normal)=}')
         X_train, X_test, Y_train, Y_test = model_selection.train_test_split(X_normal, Y, test_size=0.3, random_state=42)
         # self.clf = Classifier(classifier)
         if classifier == 'KNN':
@@ -211,6 +269,10 @@ class EEG:
         filt_eeg_file = './users/data/fmi_' + self.user_id + '_' + datetime.today().strftime('%d%m%y_%H%M%S') + '.npy'
         np.save(filt_eeg_file, self.filtered[:-1])
 
+        print('saving filtered fft data:', len(self.fft))
+        fft_eeg_file = './users/data/fft_' + self.user_id + '_' + datetime.today().strftime('%d%m%y_%H%M%S') + '.npy'
+        np.save(fft_eeg_file, self.fft)
+
     def test(self, send_to=None):
         thread = threading.Thread(target=self.__test, args=(send_to, ))
         thread.start()
@@ -233,7 +295,7 @@ class EEG:
                 filtered = my_filter(eeg_dataset, filtered)
             prev_dl = np.roll(prev_dl, 8)
             prev_dl[:8] = filtered[-1][:-3]
-            if count > self.data_length:
+            if count > self.data_length and count % 50 == 0:
                 norm = normalise_eeg(prev_dl)
                 X_fft = [np.fft.fft(norm).real]
                 pred = self.clf.predict(X_fft)
@@ -242,8 +304,8 @@ class EEG:
 
                 # last_preds[0] = pred
                 # pred = mode(last_preds)
-                right = pred[0][0] or pred[0][2]
-                left = pred[0][1] or pred[0][2]
+                left = pred[0][0] or pred[0][2]
+                right = pred[0][1] or pred[0][2]
 
                 if send_to:
                     send_to((left, right))
@@ -267,166 +329,10 @@ class EEG:
         self.eeg_inlet.close_stream()
         self.keyboard_inlet.close_stream()
 
-
-# def main_old(run_time=10, user_id='00', train=True, test=False):
-#     # assert train or test
-#     # # first resolve an EEG stream on the lab network
-#     #
-#     # print("looking for an EEG stream...")
-#     # eeg = resolve_stream('type', 'EEG')
-#     # print(eeg)
-#     #
-#     # print("looking for an Keyboard stream...")
-#     # keyboard = resolve_stream('name', 'Keyboard')
-#     # print(keyboard)
-#     #
-#     # # create a new inlet to read from the stream
-#     # eeg_inlet = StreamInlet(eeg[0])
-#     #
-#     # keyboard_inlet = StreamInlet(keyboard[0])
-#     # eeg_dataset = np.empty((0, 11))  # of the format [channel0, c1, ..., timestamp, left_shift, right_shift]
-#     # filtered = np.empty((0, 11))
-#     # # keys_dataset = np.empty((0, 3))
-#     # keys = None
-#
-#     # a = [0.9174, -0.7961, 0.9174]
-#     # b = [-1, 0.7961, -0.8347]
-#     print('starting data recording in ', end='')
-#     for i in range(3, 0, -1):
-#         print(str(i) + '...', end='')
-#         time.sleep(1)
-#     print()
-#     # run_time = 30
-#     start_time = time.time()
-#
-#     try:
-#         print('starting data recording. Press left control and right control as desired.')
-#         if train:
-#             while time.time() < start_time + run_time:
-#                 # get a new sample (you can also omit the timestamp part if you're not
-#                 # interested in it)
-#
-#                 chunk = keyboard_inlet.pull_chunk()
-#                 keys, is_new = handle_keyboard_chunk(chunk, keys)
-#                 # if is_new:
-#                 #     # print(keys[-1])
-#                 #     keys_dataset = np.append(keys_dataset, keys, axis=0)
-#
-#                 sample, timestamp = eeg_inlet.pull_sample()
-#                 data = [sample + [timestamp] + list(keys[-1][:2])]
-#                 eeg_dataset = np.append(eeg_dataset, data, axis=0)
-#                 filtered = np.append(eeg_dataset, data, axis=0)
-#                 filtered = my_filter(eeg_dataset, filtered)
-#                 # if len(filtered) > len(a):
-#                 #     for col in range(len(filtered[-1][:-3])):  # iterate through the most recent eeg datapoints
-#                 #         filtered[-1][col] = a[1]*filtered[-2][col] + a[2]*filtered[-3][col] + b[0]*eeg_dataset[-1][col] + b[1]*eeg_dataset[-2][col] + b[2]*eeg_dataset[-3][col]
-#
-#             print('data recording complete. building model...')
-#             # print(eeg_dataset)
-#             c = ['Cz', 'Fpz', 'C1', 'C2', 'C3', 'C4', 'CP1', 'CP2', 'time', 'left', 'right']
-#             eeg = pd.DataFrame(filtered, columns=c)
-#
-#             dl = 100
-#             eeg_np = filtered
-#             prev_dl = np.array([filtered[i][:-3] for i in range(dl)]).flatten()
-#
-#             X = []
-#             X_fft = []
-#             for row in range(dl, len(eeg.index)):
-#                 prev_dl = np.roll(prev_dl, 8)
-#                 prev_dl[:8] = eeg_np[row][:-3]
-#                 norm = normalise_eeg(prev_dl)
-#                 X += [norm]
-#                 X_fft += [np.fft.fft(norm).real]
-#             X_normal = X_fft
-#
-#             Y = eeg[['left', 'right']].copy()
-#             Y['only_right'] = Y.apply(lambda row: 1 if row['right'] and not row['left'] else 0, axis=1)
-#             Y['only_left'] = Y.apply(lambda row: 1 if row['left'] and not row['right'] else 0, axis=1)
-#             Y['none'] = Y.apply(lambda row: 1 if not row['left'] and not row['right'] else 0, axis=1)
-#             Y['both'] = Y.apply(lambda row: 1 if row['left'] and row['right'] else 0, axis=1)
-#             del Y['left'], Y['right']
-#             Y = Y.to_numpy()[dl:]
-#
-#             X_train, X_test, Y_train, Y_test = model_selection.train_test_split(X_normal, Y, test_size=0.3, random_state=42)
-#
-#             KNN = KNeighborsClassifier(n_neighbors=3)
-#             print('training model')
-#             model = KNN.fit(X_train, Y_train)
-#             print('analysing model')
-#             preds = model.predict(X_test)
-#             print('combined acc:', accuracy_score(Y_test, preds))
-#             print()
-#
-#             print('model complete.')
-#
-#         if test:
-#             print('predicting keys in ', end='')
-#             for i in range(3, 0, -1):
-#                 print(str(i) + '...', end='')
-#                 time.sleep(1)
-#             print('predicting keys!')
-#             # run_time = 15
-#             start_time = time.time()
-#             count = 0
-#
-#             last_preds = np.array(['']*50)
-#
-#             while time.time() < start_time + run_time:
-#                 sample, timestamp = eeg_inlet.pull_sample()
-#                 data = [sample + [timestamp] + list(keys[-1][:2])]
-#                 eeg_dataset = np.append(eeg_dataset, data, axis=0)
-#                 filtered = np.append(eeg_dataset, data, axis=0)
-#                 if count > 2:
-#                     filtered = my_filter(eeg_dataset, filtered)
-#                 # if len(filtered) > len(a):
-#                 #     for col in range(len(filtered[-1][:-3])):  # iterate through the most recent eeg datapoints
-#                 #         filtered[-1][col] = a[1]*filtered[-2][col] + a[2]*filtered[-3][col] + b[0]*eeg_dataset[-1][col] + b[1]*eeg_dataset[-2][col] + b[2]*eeg_dataset[-3][col]
-#                 prev_dl = np.roll(prev_dl, 8)
-#                 prev_dl[:8] = filtered[-1][:-3]
-#                 if count > dl:# and count % int(dl/4) == 0:
-#                     # threading.Thread(target=threaded_analyse, args=(prev_dl, model)).start()
-#                     norm = normalise_eeg(prev_dl)
-#                     X_fft = [np.fft.fft(norm).real]
-#                     pred = model.predict(X_fft)
-#                     last_preds = np.roll(last_preds, 1)
-#                     if pred[0][0] == 1:
-#                         pred = 'right'
-#                     elif pred[0][1] == 1:
-#                         pred = 'left'
-#                     elif pred[0][2] == 1:
-#                         pred = ''
-#                     elif pred[0][3] == 1:
-#                         pred = 'both'
-#                     else:
-#                         pred = ''
-#
-#                     last_preds[0] = pred
-#                     pred = mode(last_preds)
-#                     print(pred)
-#
-#                 count += 1
-#
-#     except KeyboardInterrupt:
-#         print('KeyboardInterrupt, exiting program')
-#     finally:
-#         print('closing eeg and keyboard streams')
-#         eeg_inlet.close_stream()
-#         keyboard_inlet.close_stream()
-#
-#         if train:
-#             print('saving eeg data:', len(eeg_dataset))
-#             eeg_file = './users/data/mi_' + user_id + '_' + datetime.today().strftime('%d%m%y_%H%M%S') + '.npy'
-#             np.save(eeg_file, eeg_dataset)
-#
-#             print('saving filtered eeg data:', len(filtered[:-1]))
-#             filt_eeg_file = './users/data/fmi_' + user_id + '_' + datetime.today().strftime('%d%m%y_%H%M%S') + '.npy'
-#             np.save(filt_eeg_file, filtered[:-1])
-
 def main():
     import motor_bci_game
 
-    user_id = '-1'
+    user_id = '99'
     while len(user_id) != 2:
         user_id = str(int(input('please input the user ID provided by the project investigator (Cameron)')))
         if len(user_id) == 2:
@@ -437,7 +343,7 @@ def main():
     game = motor_bci_game.Game()
     eeg = EEG(user_id, game)
     eeg.gather_data()  # runs in background
-    game.run_keyboard(run_time=5*60)  # runs in foreground
+    game.run_keyboard(run_time=10)  # runs in foreground
     print('running eeg data absorbtion')
     eeg.running = False
     training = eeg.train(classifier='LDA')
@@ -448,7 +354,7 @@ def main():
     print('testing')
     time.sleep(1)
     testing = eeg.test(send_to=game.p1.handle_keys)
-    game.run_eeg(30)
+    game.run_eeg(10)
     eeg.running = False
     while testing.is_alive():
         pass
