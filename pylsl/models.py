@@ -1,6 +1,7 @@
 import numpy as np
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.neighbors import KNeighborsClassifier
+from sklearn import svm
 
 
 class Classifier:
@@ -26,6 +27,36 @@ class KNN(Classifier):
 class LDA(Classifier):
     def __init__(self):
         self.clf = LinearDiscriminantAnalysis()
+
+    def fit(self, x, y):
+        y = [data[1] + 2 * data[2] + 3 * data[3] for data in y]
+        self.clf.fit(x, y)
+        return self.clf
+
+    def predict(self, x):
+        if x is None or len(x) == 0:
+            return [[0, 0, 0, 0]]
+        y = self.clf.predict(x)
+        # print(x)
+        y_out = np.empty((len(y), 4))
+        for i in range(len(y)):
+            if y[i] == 0:
+                y_out[i] = [1, 0, 0, 0]
+            elif y[i] == 1:
+                y_out[i] = [0, 1, 0, 0]
+            elif y[i] == 2:
+                y_out[i] = [0, 0, 1, 0]
+            elif y[i] == 3:
+                y_out[i] = [0, 0, 0, 1]
+            else:
+                y_out[i] = [0, 0, 0, 0]
+        # print(y_out)
+        return y_out
+
+
+class SVM(Classifier):
+    def __init__(self, **kwargs):
+        self.clf = svm.SVC(**kwargs)
 
     def fit(self, x, y):
         y = [data[1] + 2 * data[2] + 3 * data[3] for data in y]
