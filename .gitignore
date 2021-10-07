@@ -16,3 +16,4 @@ __pycache__
 /pylsl/lib
 /pylsl/share
 .DS_Store
+/openbci_lsl/keyboard.exe
