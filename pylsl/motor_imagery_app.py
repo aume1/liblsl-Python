@@ -151,7 +151,7 @@ class EEG:
             fft = np.zeros((len(data) - self.data_length + 1, 8*self.data_length+2))
             print('converting file. this may take a few moments...', end='')
             prev_dl = np.array([data[i][:-3] for i in range(self.data_length)]).flatten()
-            print(len(data) - self.data_length)
+            # print(len(data) - self.data_length)
             for i, row in enumerate(range(self.data_length - 1, len(data))):
                 prev_dl = np.append(data[row][:-3], np.roll(prev_dl, 8)[8:])
                 norm = normalise_eeg(prev_dl)
@@ -169,6 +169,69 @@ class EEG:
             good = 'users/data/good_' + fmi_file[4:]
             good = np.load(good)
             print(pd.DataFrame(good))
+
+    def mi_to_fft(self):
+        hist_mi = [f for f in os.listdir('users/data') if 'mi_' + self.user_id == f[:5]]
+        hist_fft = [f for f in os.listdir('users/data') if 'fft_' + self.user_id == f[:6]]
+        needed_hist_fft = []
+        for fmi in hist_mi:
+            if 'fft_' + fmi[3:] not in hist_fft:
+                needed_hist_fft.append(fmi)
+        print('need to convert to fft:', needed_hist_fft)
+
+        # hist_filt = [f for f in os.listdir('users/data') if 'fmi_' + self.user_id in f]
+        print(f'loading {needed_hist_fft}')
+        for mi_file in needed_hist_fft:
+            loaded_data = np.load('users/data/' + mi_file)
+            prev_dl = None
+            # data = np.zeros((0, 11))
+            eeg_dataset = np.zeros((0, 11))
+            filtered = np.zeros((0, 11))
+            fft = np.zeros((len(loaded_data)-self.data_length, 8*self.data_length+2))
+            print(len(loaded_data)/1000)
+            t0 = time.time()
+
+            for row in range(len(loaded_data)):
+                # print(self.keys)
+                data = [loaded_data[row]]
+                eeg_dataset = np.append(eeg_dataset, data, axis=0)
+                # self.preprocess()
+                filtered = np.append(filtered, data, axis=0)
+                filtered = my_filter(eeg_dataset, filtered)
+                if len(filtered) == self.data_length:
+                    prev_dl = np.array([filtered[i][:-3] for i in range(self.data_length)]).flatten()
+                if len(filtered) > self.data_length:
+                    prev_dl = np.roll(prev_dl, 8)
+                    prev_dl[:8] = filtered[-1][:-3]
+                    norm = normalise_eeg(prev_dl)
+                    fft[row-self.data_length] = np.append(np.fft.fft(norm).real, filtered[-1][-2:])
+                if row % 1000 == 500:
+                    tr = (time.time() - t0) * (len(loaded_data) - row) / row
+                    print(f'time remaining: {tr:.2f}')
+                    # print(end='.')
+
+            # filtered = np.zeros((0, 11))
+            # fft = np.zeros((len(data) - self.data_length + 1, 8*self.data_length+2))
+            # print('converting file. this may take a few moments...', end='')
+            # prev_dl = np.array([data[i][:-3] for i in range(self.data_length)]).flatten()
+            # # print(len(data) - self.data_length)
+            # for i, row in enumerate(range(self.data_length - 1, len(data))):
+            #     prev_dl = np.append(data[row][:-3], np.roll(prev_dl, 8)[8:])
+            #     norm = normalise_eeg(prev_dl)
+            #     add = np.append(np.fft.fft(norm).real, [data[row][-2:]])
+            #     # add = list(np.fft.fft(norm).real) + list(data[row][-2:])#, axis=1)
+            #     # fft = np.append(fft, [add], axis=0)
+            #     fft[i] = add
+            print()
+            fft_name = 'users/data/fft_' + mi_file[3:]
+            print('outputting to', fft_name)
+            np.save(fft_name, fft)
+            # print(pd.DataFrame(fft))
+            good = 'users/data/good_' + mi_file[3:]
+            good = np.load(good)
+            # print(pd.DataFrame(good))
+
+            print(f'{np.array_equal(fft, good) = }')
 
     def preprocess(self):
         self.filtered = np.append(self.filtered, self.eeg_dataset[-1], axis=0)
@@ -392,7 +455,7 @@ def main(user_id, train_time=30, test_time=30):
         print('user ID must be 2 digits, you put', len(user_id))
 
     game = motor_bci_game.Game()
-    eeg = EEG(user_id, game)#, ignore_BCI=True)
+    eeg = EEG(user_id, game)  # , ignore_BCI=True)
     gathering = eeg.gather_data()  # runs in background
     game.run_keyboard(run_time=train_time)  # runs in foreground
     eeg.running = False  # stop eeg gathering once game completes
@@ -436,14 +499,14 @@ def train_test(user_id):
     sys.exit()
 
 
-def convert_fmi_to_fft(user_id):
+def convert_mi_to_fft(user_id):
     import motor_bci_game
 
     # user_id = '00'# + str(i)
     print(f'{user_id=}')
     game = motor_bci_game.Game()
     eeg = EEG(user_id, game, ignore_lsl=True)
-    eeg.fmi_to_fft()
+    eeg.mi_to_fft()
 
     eeg.close()
     game.quit()
@@ -451,20 +514,32 @@ def convert_fmi_to_fft(user_id):
 
 
 if __name__ == '__main__':
-    mode = 4
+    user_id = '98'
+    mode = 2
     if mode == 1:
         good = np.load('users/data/fmi_01_300921_211231.npy')
         print(pd.DataFrame(good))
 
     elif mode == 2:
-        main(user_id='99',
+        main(user_id=user_id,
              train_time=30,
              test_time=30)
 
     elif mode == 3:
-        convert_fmi_to_fft('99')
+        convert_mi_to_fft(user_id)
 
     elif mode == 4:
-        train_test('99')
+        train_test(user_id)
+
+    elif mode == 5:
+        x = [0, 0, 1, 1, 1, 1, 1, 1, 1]
+        x = [[i, 2*i, 0, 0, 0] for i in x]
+        y = [0]
+        y = [[i, 2*i, 0, 0, 0] for i in y]
+        for i in range(2, len(x)):
+            y.append([0, 0, 0, 0, 0])
+            y = my_filter(x[:i], y)
+        y = [[i[0], i[1]] for i in y]
+        print(y)
 
     print('done?')
