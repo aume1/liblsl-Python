@@ -29,7 +29,7 @@ class LDA(Classifier):
         self.clf = LinearDiscriminantAnalysis()
 
     def fit(self, x, y):
-        y = [data[1] + 2 * data[2] + 3 * data[3] for data in y]
+        y = [data[1] + 2 * data[2] + 3 * data[3] for data in y]  # convert data from the form [_, r, l, lr] to [0, 1, 2, or 3]
         self.clf.fit(x, y)
         return self.clf
 
