@@ -95,13 +95,16 @@ def threaded_analyse(eeg, model):
 
 
 def my_filter(x, y):
-    a = [0.9174, -0.7961, 0.9174]
-    b = [1, -0.7961, 0.8347]
+    # b = [0.9174, -0.7961, 0.9174]
+    # a = [-1, 0.7961, -0.8347]
+    # Parameters for a 40-hz low-pass filter
+    a = [-1, 0.331]
+    b = [0.3345, 0.3345]
     if len(y) > len(a):
         for col in range(len(y[-1][:-3])):
             y[-1][col] = b[0]*x[-1][col]
             for i in range(1, len(a)):
-                y[-1][col] += a[i]*y[-1-i][col] - b[i]*x[-1-i][col]
+                y[-1][col] += a[i]*y[-1-i][col] + b[i]*x[-1-i][col]
     return y
 
 
@@ -202,7 +205,7 @@ class EEG:
             data = [sample + [timestamp] + list(self.keys[-1][:2])]
             self.eeg_dataset = np.append(self.eeg_dataset, data, axis=0)
             # self.preprocess()
-            self.filtered = np.append(self.eeg_dataset, data, axis=0)
+            self.filtered = np.append(self.filtered, data, axis=0)
             self.filtered = my_filter(self.eeg_dataset, self.filtered)
             if len(self.filtered) == self.data_length:
                 prev_dl = np.array([self.filtered[i][:-3] for i in range(self.data_length)]).flatten()
