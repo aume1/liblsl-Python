@@ -322,9 +322,6 @@ class EEG:
             X_o = np.append(X_o, X[i], axis=0)
             data_o = np.append(data_o, data[i], axis=0)
 
-
-
-        # TODO: Balance the dataset
         print('balancing data')
         # print(data_o)
         fft_df = pd.DataFrame(data_o, columns=['c' + str(i) for i in range(802)])
@@ -333,14 +330,14 @@ class EEG:
 
         m = min(fft_df.y.value_counts())  # grab the count of the least common y value (left, right, or none)
         y_vals = fft_df.y.unique()
-        print(f'got {m=}, unique={y_vals}')
+        print(f'got min={m}, unique={y_vals}')
 
         randomized_df = fft_df.sample(frac=1).reset_index(drop=True)
-        out = np.zeros((0, 803))
+        out = np.zeros((m*3, 803))
 
-        for y in y_vals:
+        for i, y in enumerate(y_vals):
             arr = randomized_df.loc[randomized_df['y'] == y].head(m).to_numpy()
-            out = np.append(out, [i for i in arr], axis=0)
+            out[i*m:i*m + m] = arr
         print('consolidated data')
         randomized_df = pd.DataFrame(out)
         randomized_df = randomized_df.sample(frac=1).reset_index(drop=True)
@@ -514,8 +511,8 @@ def convert_mi_to_fft(user_id):
 
 
 if __name__ == '__main__':
-    user_id = '98'
-    mode = 2
+    user_id = '00'
+    mode = 4
     if mode == 1:
         good = np.load('users/data/fmi_01_300921_211231.npy')
         print(pd.DataFrame(good))
@@ -523,7 +520,7 @@ if __name__ == '__main__':
     elif mode == 2:
         main(user_id=user_id,
              train_time=30,
-             test_time=30)
+             test_time=60)
 
     elif mode == 3:
         convert_mi_to_fft(user_id)
