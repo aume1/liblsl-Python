@@ -82,3 +82,28 @@ class SVM(Classifier):
                 y_out[i] = [0, 0, 0, 0]
         # print(y_out)
         return y_out
+
+
+class ANN(Classifier):
+    def __init__(self, **kwargs):
+        self.clf = keras.models.Sequential()
+        self.clf.add(keras.layers.Dense(100, input_dim=800, activation="relu"))
+        # self.clf.add(keras.layers.Dense(100, activation="relu"))
+        self.clf.add(keras.layers.Dense(4, activation="softmax"))
+        self.clf.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+
+    def fit(self, x, y, epochs=30):
+        self.clf.fit(x, y, epochs=epochs)
+        return self.clf
+
+    def predict(self, x):
+        preds = self.clf.predict(x)
+        out = [[1 if i == max(pred) else 0 for i in pred] for pred in preds]
+        return out
+
+
+if __name__ == "__main__":
+    preds = [[0.1, 0.1, 0.9, 0.1], [0.2, 0.3, 0.4, 0.9]]
+    out = [[1 if i == max(pred) else 0 for i in pred] for pred in preds]
+    print(preds)
+    print(out)
