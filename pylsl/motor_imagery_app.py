@@ -367,6 +367,8 @@ class EEG:
             self.clf = models.LDA()
         elif classifier == "SVM":
             self.clf = models.SVM(**kwargs)
+        elif classifier == "ANN":
+            self.clf = models.ANN()
         else:
             print(f'no valid classifier provided ({classifier}). Using KNN')
             self.clf = models.KNN(n_neighbors=3)
