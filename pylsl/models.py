@@ -2,6 +2,7 @@ import numpy as np
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn import svm
+from tensorflow import keras
 
 
 class Classifier:
@@ -21,6 +22,8 @@ class KNN(Classifier):
         return self.model
 
     def predict(self, x):
+        if len(np.array(x).shape) == 0:
+            x = [x]
         return self.model.predict(x)
 
 
@@ -36,6 +39,10 @@ class LDA(Classifier):
     def predict(self, x):
         if x is None or len(x) == 0:
             return [[0, 0, 0, 0]]
+        if np.array(x).ndim == 1:
+            x = [x]
+        # print(f'{np.array(x).ndim=}')
+        # print(f'{x=}')
         y = self.clf.predict(x)
         # print(x)
         y_out = np.empty((len(y), 4))
