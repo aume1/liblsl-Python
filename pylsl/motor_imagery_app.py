@@ -206,7 +206,7 @@ class EEG:
         # hist_fft = [f for f in os.listdir('D:/thesis_data') if 'fft_' + self.user_id in f]  # grab historical data for user
 
         # take only the most recent data if we don't include_historical
-        if not include_historical:
+        if not include_historical or classifier == 'ANN':
             print('ignoring historical data...')
             hist_fft = [hist_fft[-1]]
 

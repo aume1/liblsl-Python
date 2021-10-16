@@ -93,14 +93,20 @@ class SVM(Classifier):
 
 class ANN(Classifier):
     def __init__(self, **kwargs):
-        self.clf = keras.models.Sequential()
-        self.clf.add(keras.layers.Dense(100, input_dim=800, activation="relu"))
-        # self.clf.add(keras.layers.Dense(100, activation="relu"))
-        self.clf.add(keras.layers.Dense(4, activation="softmax"))
-        self.clf.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+        try:
+            self.clf = keras.models.load_model('model')
+            print('loaded model!', self.clf.summary())
+        except:
+            self.clf = keras.models.Sequential()
+            self.clf.add(keras.layers.Dense(100, input_dim=800, activation="relu"))
+            # self.clf.add(keras.layers.Dense(100, activation="relu"))
+            self.clf.add(keras.layers.Dense(4, activation="softmax"))
+            self.clf.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+            self.clf.save('model')
 
     def fit(self, x, y, epochs=30):
         self.clf.fit(x, y, epochs=epochs)
+        self.clf.save('model')
         return self.clf
 
     def predict(self, x):
