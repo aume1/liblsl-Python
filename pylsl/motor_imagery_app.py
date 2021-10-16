@@ -95,12 +95,13 @@ def my_filter(x, y):
 
 
 class EEG:
-    def __init__(self, user_id, game, data_length=100, ignore_lsl=False, ignore_BCI=False):
+    def __init__(self, user_id, game, data_length=100, ignore_lsl=False, ignore_BCI=False, folder='D:/thesis_data/'):
         # first resolve an EEG stream on the lab network
 
         self.user_id = user_id
         self.game = game
         self.data_length = data_length
+        self.folder = folder
 
         if not ignore_lsl:
             print("looking for an Keyboard stream...")
@@ -140,8 +141,8 @@ class EEG:
             self.fft += [fft + self.filtered[-1][-2:]]
 
     def mi_to_fft(self):
-        hist_mi = [f for f in os.listdir('users/data') if 'mi_' + self.user_id == f[:5]]
-        hist_fft = [f for f in os.listdir('users/data') if 'fft_' + self.user_id == f[:6]]
+        hist_mi = [f for f in os.listdir(self.folder) if 'mi_' + self.user_id == f[:5]]
+        hist_fft = [f for f in os.listdir(self.folder) if 'fft_' + self.user_id == f[:6]]
         needed_hist_fft = []
         for fmi in hist_mi:
             if 'fft_' + fmi[3:] not in hist_fft:
@@ -150,7 +151,7 @@ class EEG:
 
         print(f'loading {needed_hist_fft}')
         for mi_file in needed_hist_fft:
-            loaded_data = np.load('users/data/' + mi_file)
+            loaded_data = np.load(self.folder + mi_file)
             self.eeg_dataset = []
             self.filtered = []
             self.fft = []
@@ -165,7 +166,7 @@ class EEG:
                     print(f'time remaining: {tr:.2f}')
 
             print()
-            fft_name = 'users/data/fft_' + mi_file[3:]
+            fft_name = self.folder + 'fft_' + mi_file[3:]
             print('outputting to', fft_name)
             np.save(fft_name, self.fft)
             # print(pd.DataFrame(self.fft))
@@ -201,7 +202,8 @@ class EEG:
 
     def __train(self, classifier='KNN', include_historical=False, **kwargs):
         print('data recording complete. building model... (this may take a few moments)')
-        hist_fft = [f for f in os.listdir('users/data') if 'fft_' + self.user_id in f]  # grab historical data for user
+        hist_fft = [f for f in os.listdir(self.folder) if 'fft_' + self.user_id in f]  # grab historical data for user
+        # hist_fft = [f for f in os.listdir('D:/thesis_data') if 'fft_' + self.user_id in f]  # grab historical data for user
 
         # take only the most recent data if we don't include_historical
         if not include_historical:
@@ -209,7 +211,8 @@ class EEG:
             hist_fft = [hist_fft[-1]]
 
         print(f'loading {hist_fft}')
-        data = [np.load('users/data/' + f).tolist() for f in hist_fft]
+        data = [np.load(self.folder + f).tolist() for f in hist_fft]
+        # data = [np.load('D:/thesis_data/' + f).tolist() for f in hist_fft]
 
         X = [dat[:][:-2] for dat in data]
         Y_i = [dat[:][-2:] for dat in data]
@@ -288,15 +291,15 @@ class EEG:
     def save_training(self):
         suffix = '_' + datetime.today().strftime('%d%m%y_%H%M%S') + '.npy'
         print('saving eeg data:', np.array(self.eeg_dataset).shape)
-        eeg_file = './users/data/mi_' + self.user_id + suffix
+        eeg_file = self.folder + 'mi_' + self.user_id + suffix
         np.save(eeg_file, self.eeg_dataset)
 
         print('saving filtered eeg data:', np.array(self.filtered).shape)
-        filt_eeg_file = './users/data/fmi_' + self.user_id + suffix
+        filt_eeg_file = self.folder + 'fmi_' + self.user_id + suffix
         np.save(filt_eeg_file, self.filtered)
 
         print('saving filtered fft data:', np.array(self.fft).shape)
-        fft_eeg_file = './users/data/fft_' + self.user_id + suffix
+        fft_eeg_file = self.folder + 'fft_' + self.user_id + suffix
         np.save(fft_eeg_file, self.fft)
 
     def test(self, send_to=None):
