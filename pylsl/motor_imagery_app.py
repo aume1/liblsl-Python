@@ -13,7 +13,6 @@ import pandas as pd
 import time
 from sklearn import model_selection
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.decomposition import FastICA
 from sklearn.metrics import accuracy_score
 import warnings
 from statistics import mode
@@ -395,7 +394,7 @@ def main(user_id, train_time=30, test_time=30):
     eeg.running = False  # stop eeg gathering once game completes
     while gathering.is_alive(): pass
 
-    training = eeg.train(classifier='CNN', include_historical=True)  # , decision_function_shape="ovo")
+    training = eeg.train(classifier='LDA', include_historical=True)  #, decision_function_shape="ovo")
     while training.is_alive(): pass
 
     print('testing')
