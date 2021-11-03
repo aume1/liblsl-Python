@@ -100,7 +100,7 @@ class ANN(Classifier):
             self.model_location = 'model'
         try:
             self.clf = keras.models.load_model(self.model_location)
-            print(f'loaded {self.model_location}!')
+            print('loaded {}!'.format(self.model_location))
             for i in range(len(self.clf.layers[:-1])):
                 print(self.clf.layers[i])
                 self.clf.layers[i].trainable = False
@@ -138,7 +138,7 @@ class RNN(Classifier):
             self.model_location = 'rnn_model'
         try:
             self.clf = keras.models.load_model(self.model_location)
-            print(f'loaded {self.model_location}!')
+            print('loaded {}!'.format(self.model_location))
             for i in range(len(self.clf.layers[:-1])):
                 print(self.clf.layers[i])
                 self.clf.layers[i].trainable = False
@@ -184,7 +184,7 @@ class CNN(Classifier):
             self.model_location = 'cnn_model'
         try:
             self.clf = keras.models.load_model(self.model_location)
-            print(f'loaded {self.model_location}!')
+            print('loaded {}!'.format(self.model_location))
             for i in range(len(self.clf.layers[:-1])):
                 self.clf.layers[i].trainable = True
             self.clf.summary()

@@ -166,7 +166,7 @@ class EEG:
                 needed_hist_fft.append(fmi)
         print('need to convert to fft:', needed_hist_fft)
 
-        print(f'loading {needed_hist_fft}')
+        print('loading {}'.format(needed_hist_fft))
         for mi_file in needed_hist_fft:
             loaded_data = np.load('users/data/' + mi_file)
             self.eeg_dataset = []
@@ -180,7 +180,7 @@ class EEG:
 
                 if row % 1000 == 500:
                     tr = (time.time() - t0) * (len(loaded_data) - row) / row
-                    print(f'time remaining: {tr:.2f}')
+                    print('time remaining: {}'.format(tr))
 
             print()
             fft_name = 'users/data/fft_' + mi_file[3:]
@@ -226,7 +226,7 @@ class EEG:
             print('ignoring historical data...')
             hist_fft = [hist_fft[-1]]
 
-        print(f'loading {hist_fft}')
+        print('loading {}'.format(hist_fft))
         data = [np.load('users/data/' + f).tolist()[::5] for f in hist_fft]
 
         X = [dat[:][:-2] for dat in data]
@@ -252,7 +252,7 @@ class EEG:
 
         m = min(fft_df.y.value_counts())  # grab the count of the least common y value (left, right, or none)
         y_vals = fft_df.y.unique()
-        print(f'got min={m}, unique={y_vals}')
+        print('got min={}, unique={}'.format(m, y_vals))
 
         randomized_df = fft_df.sample(frac=1).reset_index(drop=True)
         out = np.zeros((m*3, 803))
@@ -267,7 +267,7 @@ class EEG:
         Y = randomized_df[[800, 801]].to_numpy()
         del randomized_df[800], randomized_df[801], randomized_df[802]
         X = randomized_df.to_numpy()
-        print(f'created X and Y. {X.shape=}, {Y.shape=}')
+        print('created X and Y. X.shape={}, Y.shape={}'.format(X.shape, Y.shape))
         # y =
 
         # one hot encoding for Y values
@@ -297,9 +297,9 @@ class EEG:
         elif classifier == "CNN":
             self.clf = models.CNN(**kwargs)
         else:
-            print(f'no valid classifier provided ({classifier}). Using KNN')
+            print('no valid classifier provided ({}). Using KNN'.format(classifier))
             self.clf = models.KNN(n_neighbors=3)
-        print(f'training model ({self.clf} classifier)...')
+        print('training model ({} classifier)...'.format(self.clf))
         self.clf.fit(X_train, Y_train)
         print('analysing model...')
         preds = self.clf.predict(X_test)
@@ -382,7 +382,7 @@ def main(user_id, train_time=30, test_time=30):
     while len(user_id) != 2:
         user_id = str(int(input('please input the user ID provided by the project investigator (Cameron)')))
         if len(user_id) == 2:
-            print(f'{user_id=}')
+            print('user_id={}'.format(user_id))
             break
         print('user ID must be 2 digits, you put', len(user_id))
 
@@ -436,7 +436,7 @@ def convert_mi_to_fft(user_id):
     import motor_bci_game
 
     # user_id = '00'# + str(i)
-    print(f'{user_id=}')
+    print('user_id={}'.format(user_id))
     game = motor_bci_game.Game()
     eeg = EEG(user_id, game, ignore_lsl=True)
     eeg.mi_to_fft()
