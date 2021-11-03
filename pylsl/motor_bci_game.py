@@ -4,8 +4,8 @@ import time
 import pygame
 from pygame.locals import *
 import random
-from ctypes import windll
-SetWindowPos = windll.user32.SetWindowPos
+# from ctypes import windll
+# SetWindowPos = windll.user32.SetWindowPos
 
 fps = 60
 
@@ -40,7 +40,7 @@ class Player(pygame.sprite.Sprite):
     def remove_from_group(self):
         pygame.sprite.Group().remove(self)
 
-    def handle_keys(self, left_right: tuple):
+    def handle_keys(self, left_right):
         self.keys['l'], self.keys['r'], *_ = left_right
 
     def update(self, *args, **kwargs):
@@ -144,8 +144,8 @@ class Game:
         self.screen = pygame.display.set_mode(size=[1280, 720])
         pygame.display.set_caption("MTRN4093 - EEG BCI")
         time.sleep(0.5)
-        hwnd = pygame.display.get_wm_info()['window']
-        SetWindowPos(hwnd, -1, 0, 0, 0, 0, 2|1)
+        # hwnd = pygame.display.get_wm_info()['window']
+        # SetWindowPos(hwnd, -1, 0, 0, 0, 0, 2|1)
 
         self.clock = pygame.time.Clock()
 

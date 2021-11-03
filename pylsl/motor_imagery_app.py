@@ -25,7 +25,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 warnings.filterwarnings('error')
 
 
-def handle_keyboard_chunk(chunk: tuple, keys):
+def handle_keyboard_chunk(chunk, keys):
     ''' Returns the button statuses from the LSL keyboard chunk '''
     ks, times = chunk
     new_chunk = [[], []]
