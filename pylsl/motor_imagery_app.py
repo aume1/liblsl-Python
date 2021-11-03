@@ -13,6 +13,7 @@ import pandas as pd
 import time
 from sklearn import model_selection
 from sklearn.neighbors import KNeighborsClassifier
+from sklearn.decomposition import FastICA
 from sklearn.metrics import accuracy_score
 import warnings
 from statistics import mode
@@ -80,17 +81,30 @@ def normalise_eeg(eeg):
     return [normalise_list(eeg[i::8]) for i in range(8)]
 
 
-def my_filter(x, y):
+def my_filter(x, y, a=None, b=None):
     # b = [0.9174, -0.7961, 0.9174]
     # a = [-1, 0.7961, -0.8347]
     # Parameters for a 40-hz low-pass filter
-    a = [-1, 0.331]
-    b = [0.3345, 0.3345]
+    if a is None:
+        a = [-1, 0.331]
+    if b is None:
+        b = [0.3345, 0.3345]
     if len(y) > len(a):
         for col in range(len(y[-1][:-3])):
-            y[-1][col] = b[0]*x[-1][col]
-            for i in range(1, len(a)):
-                y[-1][col] += a[i]*y[-1-i][col] + b[i]*x[-1-i][col]
+            y[-1][col] = sum(a[i]*y[-1-i][col] + b[i]*x[-1-i][col] for i in range(len(a)))
+            # for i in range(len(a)):
+            #     y[-1][col] += a[i]*y[-1-i][col] + b[i]*x[-1-i][col]
+    return y
+
+
+def fir_filter(x, y, a=None):
+    if a is None:
+        a = [1.4, -0.8, 1.4]  # 50 Hz notch filter
+        # a = [1]  # do nothing
+    if len(x) >= len(a):
+        for col in range(len(y[-1][:-3])):
+            y[-1][col] = sum([a[i]*x[-1-i][col] for i in range(len(a))])
+            # print(y[-1][col])
     return y
 
 
@@ -123,7 +137,7 @@ class EEG:
 
     @property
     def prev_dl(self):
-        return np.array([item[:-3] for item in self.eeg_dataset[-1:-1-self.data_length:-1]]).T.tolist()
+        return np.array([item[:-3] for item in self.filtered[-1:-1-self.data_length:-1]]).T.tolist()
 
     def eeg_sample(self, data=None):
         if data is None:
@@ -132,11 +146,16 @@ class EEG:
 
         self.eeg_dataset += data
         self.filtered += [[0]*8 + list(data[0][-3:])]
-        self.filtered = my_filter(self.eeg_dataset, self.filtered)
+        # self.filtered = my_filter(self.eeg_dataset, self.filtered)
+        # self.filtered = my_filter(self.eeg_dataset, self.filtered, a=[-1, 1.452, -0.4523], b=[0.2737, 0, -0.2737])
+        self.filtered = my_filter(self.eeg_dataset, self.filtered,
+                   b=[float(i) for i in '0.3749   -0.2339         0    0.2339   -0.3749'.split()],
+                   a=[-1*float(i) for i in '1.0000   -1.8173    1.9290   -1.3011    0.2154'.split()])  # this one also works well!
+        # self.filtered = fir_filter(self.eeg_dataset, self.filtered)  # this works well!
 
         if len(self.filtered) > self.data_length:
             norm = normalise_eeg(self.prev_dl)
-            fft = np.array([np.fft.fft(n).real for n in norm]).flatten().tolist()
+            fft = np.array([np.abs(np.fft.fft(n)) for n in norm]).flatten().tolist()
             self.fft += [fft + self.filtered[-1][-2:]]
 
     def mi_to_fft(self):
@@ -209,7 +228,7 @@ class EEG:
             hist_fft = [hist_fft[-1]]
 
         print(f'loading {hist_fft}')
-        data = [np.load('users/data/' + f).tolist() for f in hist_fft]
+        data = [np.load('users/data/' + f).tolist()[::5] for f in hist_fft]
 
         X = [dat[:][:-2] for dat in data]
         Y_i = [dat[:][-2:] for dat in data]
@@ -256,6 +275,7 @@ class EEG:
         # Y_i = list(Y_o)
         Y_i = [[0], [1], [2], [3]] + [[2*Y[i][-2] + Y[i][-1]] for i in range(len(Y))]
         enc = OneHotEncoder()
+        print('fitting one hot encoder')
         enc.fit(Y_i)
         # X = X_o
         Y = enc.transform(Y_i).toarray()[4:]
@@ -272,7 +292,11 @@ class EEG:
         elif classifier == "SVM":
             self.clf = models.SVM(**kwargs)
         elif classifier == "ANN":
-            self.clf = models.ANN()
+            self.clf = models.ANN(**kwargs)
+        elif classifier == "RNN":
+            self.clf = models.RNN(**kwargs)
+        elif classifier == "CNN":
+            self.clf = models.CNN(**kwargs)
         else:
             print(f'no valid classifier provided ({classifier}). Using KNN')
             self.clf = models.KNN(n_neighbors=3)
@@ -284,6 +308,28 @@ class EEG:
         print()
 
         print('model complete.')
+
+    # def build_model(self, classifier, **kwargs):
+    #     thread = threading.Thread(target=self._build_model, args=(classifier, ), kwargs=kwargs)
+    #     thread.start()
+    #     return thread
+    #
+    # def _build_model(self, classifier, **kwargs):
+    #     if classifier == 'KNN':
+    #         self.clf = models.KNN(n_neighbors=3, **kwargs)
+    #     elif classifier == "LDA":
+    #         self.clf = models.LDA()
+    #     elif classifier == "SVM":
+    #         self.clf = models.SVM(**kwargs)
+    #     elif classifier == "ANN":
+    #         self.clf = models.ANN(**kwargs)
+    #     elif classifier == "RNN":
+    #         self.clf = models.RNN(**kwargs)
+    #     elif classifier == "CNN":
+    #         self.clf = models.CNN(**kwargs)
+    #     else:
+    #         print(f'no valid classifier provided ({classifier}). Using KNN')
+    #         self.clf = models.KNN(n_neighbors=3)
 
     def save_training(self):
         suffix = '_' + datetime.today().strftime('%d%m%y_%H%M%S') + '.npy'
@@ -314,12 +360,14 @@ class EEG:
 
         while self.running:
             self.eeg_sample()
-            if len(self.fft) > 0:
+            if len(self.fft) > self.data_length:
                 pred = self.clf.predict(self.fft[-1][:-2])
                 left = pred[0][0] or pred[0][2]
                 right = pred[0][1] or pred[0][2]
                 if send_to:
                     send_to((left, right))
+            elif send_to:
+                send_to((0, 0))
 
     def close(self):
         print('closing eeg and keyboard streams')
@@ -342,11 +390,12 @@ def main(user_id, train_time=30, test_time=30):
     game = motor_bci_game.Game()
     eeg = EEG(user_id, game)
     gathering = eeg.gather_data()  # runs in background
+    # eeg.build_model(classifier='CNN')  # runs in background
     game.run_keyboard(run_time=train_time)  # runs in foreground
     eeg.running = False  # stop eeg gathering once game completes
     while gathering.is_alive(): pass
 
-    training = eeg.train(classifier='LDA', include_historical=True)  #, decision_function_shape="ovo")
+    training = eeg.train(classifier='CNN', include_historical=True)  # , decision_function_shape="ovo")
     while training.is_alive(): pass
 
     print('testing')
@@ -365,17 +414,17 @@ def main(user_id, train_time=30, test_time=30):
 def train_test(user_id):
     import motor_bci_game
 
-    while len(user_id) != 2:
-        user_id = str(int(input('please input the user ID provided by the project investigator (Cameron)')))
-        if len(user_id) == 2:
-            print(f'{user_id=}')
-            break
-        print('user ID must be 2 digits, you put', len(user_id))
+    # while len(user_id) != 2:
+    #     user_id = str(int(input('please input the user ID provided by the project investigator (Cameron)')))
+    #     if len(user_id) == 2:
+    #         print(f'{user_id=}')
+    #         break
+    #     print('user ID must be 2 digits, you put', len(user_id))
 
     game = motor_bci_game.Game()
     eeg = EEG(user_id, game, ignore_lsl=True)
 
-    training = eeg.train(classifier='ANN', include_historical=True)  #, decision_function_shape="ovo")
+    training = eeg.train(classifier='LDA', include_historical=False)  #, decision_function_shape="ovo")
     while training.is_alive(): pass
 
     eeg.close()
@@ -399,16 +448,16 @@ def convert_mi_to_fft(user_id):
 
 
 if __name__ == '__main__':
-    user_id = '04'
-    mode = 3
+    user_id = '10'
+    mode = 2
     if mode == 1:
         good = np.load('users/data/fmi_01_300921_211231.npy')
         print(pd.DataFrame(good))
 
     elif mode == 2:
         main(user_id=user_id,
-             train_time=10,
-             test_time=10)
+             train_time=5*60,
+             test_time=60)
 
     elif mode == 3:
         convert_mi_to_fft(user_id)
