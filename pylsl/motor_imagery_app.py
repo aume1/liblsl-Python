@@ -219,7 +219,7 @@ class EEG:
 
     def __train(self, classifier='KNN', include_historical=False, **kwargs):
         print('data recording complete. building model... (this may take a few moments)')
-        hist_fft = [f for f in os.listdir('users/data') if 'fft_' + self.user_id in f]  # grab historical data for user
+        hist_fft = [f for f in os.listdir('users/data') if 'fft_' + self.user_id in f and 'npy' in f]  # grab historical data for user
 
         # take only the most recent data if we don't include_historical
         if not include_historical or classifier == 'ANN':
@@ -229,16 +229,16 @@ class EEG:
         print('loading {}'.format(hist_fft))
         data = [np.load('users/data/' + f).tolist()[::5] for f in hist_fft]
 
-        X = [dat[:][:-2] for dat in data]
-        Y_i = [dat[:][-2:] for dat in data]
-        Y_o = []
-        X_o = []
+        # X = [dat[:][:-2] for dat in data]
+        # Y_i = [dat[:][-2:] for dat in data]
+        # Y_o = []
+        # X_o = []
         data_o = []
 
         # merge historical data together
         for i in range(len(data)):
-            Y_o += Y_i[i]
-            X_o += X[i]
+            # Y_o += Y_i[i]
+            # X_o += X[i]
             print('data', i, 'shape', np.array(data[i]).shape)
             data_o += data[i]
 
@@ -284,6 +284,36 @@ class EEG:
             return
 
         X_train, X_test, Y_train, Y_test = model_selection.train_test_split(X, Y, test_size=0.3, random_state=42)
+        # if classifier == 'KNN':
+        #     self.clf = models.KNN(n_neighbors=3, **kwargs)
+        # elif classifier == "LDA":
+        #     self.clf = models.LDA()
+        # elif classifier == "SVM":
+        #     self.clf = models.SVM(**kwargs)
+        # elif classifier == "ANN":
+        #     self.clf = models.ANN(**kwargs)
+        # elif classifier == "RNN":
+        #     self.clf = models.RNN(**kwargs)
+        # elif classifier == "CNN":
+        #     self.clf = models.CNN(**kwargs)
+        # else:
+        #     print('no valid classifier provided ({}). Using KNN'.format(classifier))
+        #     self.clf = models.KNN(n_neighbors=3)
+        print('training model ({} classifier)...'.format(self.clf))
+        self.clf.fit(X_train, Y_train)
+        print('analysing model...')
+        preds = self.clf.predict(X_test)
+        print('combined acc:', accuracy_score(Y_test, preds))
+        print()
+
+        print('model complete.')
+
+    def build_model(self, classifier, **kwargs):
+        thread = threading.Thread(target=self._build_model, args=(classifier, ), kwargs=kwargs)
+        thread.start()
+        return thread
+
+    def _build_model(self, classifier, **kwargs):
         if classifier == 'KNN':
             self.clf = models.KNN(n_neighbors=3, **kwargs)
         elif classifier == "LDA":
@@ -297,38 +327,8 @@ class EEG:
         elif classifier == "CNN":
             self.clf = models.CNN(**kwargs)
         else:
-            print('no valid classifier provided ({}). Using KNN'.format(classifier))
+            print(f'no valid classifier provided ({classifier}). Using KNN')
             self.clf = models.KNN(n_neighbors=3)
-        print('training model ({} classifier)...'.format(self.clf))
-        self.clf.fit(X_train, Y_train)
-        print('analysing model...')
-        preds = self.clf.predict(X_test)
-        print('combined acc:', accuracy_score(Y_test, preds))
-        print()
-
-        print('model complete.')
-
-    # def build_model(self, classifier, **kwargs):
-    #     thread = threading.Thread(target=self._build_model, args=(classifier, ), kwargs=kwargs)
-    #     thread.start()
-    #     return thread
-    #
-    # def _build_model(self, classifier, **kwargs):
-    #     if classifier == 'KNN':
-    #         self.clf = models.KNN(n_neighbors=3, **kwargs)
-    #     elif classifier == "LDA":
-    #         self.clf = models.LDA()
-    #     elif classifier == "SVM":
-    #         self.clf = models.SVM(**kwargs)
-    #     elif classifier == "ANN":
-    #         self.clf = models.ANN(**kwargs)
-    #     elif classifier == "RNN":
-    #         self.clf = models.RNN(**kwargs)
-    #     elif classifier == "CNN":
-    #         self.clf = models.CNN(**kwargs)
-    #     else:
-    #         print(f'no valid classifier provided ({classifier}). Using KNN')
-    #         self.clf = models.KNN(n_neighbors=3)
 
     def save_training(self):
         suffix = '_' + datetime.today().strftime('%d%m%y_%H%M%S') + '.npy'
@@ -356,11 +356,23 @@ class EEG:
         self.eeg_dataset = []
         self.filtered = []
         self.fft = []
+        last_preds = []
 
         while self.running:
             self.eeg_sample()
             if len(self.fft) > self.data_length:
                 pred = self.clf.predict(self.fft[-1][:-2])
+                # if pred[0][2]:
+                #     last_preds += [1]
+                # elif pred[0][1]:
+                #     last_preds += [-1]
+                # else:
+                #     last_preds += [0]
+                # if len(last_preds) >= 25:
+                #     last_preds = last_preds[1:]
+                # avg = sum(last_preds) / len(last_preds)
+                # left = avg < -0.25
+                # right = avg > 0.25
                 left = pred[0][0] or pred[0][2]
                 right = pred[0][1] or pred[0][2]
                 if send_to:
@@ -376,7 +388,7 @@ class EEG:
             self.keyboard_inlet.close_stream()
 
 
-def main(user_id, train_time=30, test_time=30):
+def main(user_id, train_time=30, test_time=30, classifier='LDA'):
     import motor_bci_game
 
     while len(user_id) != 2:
@@ -389,13 +401,15 @@ def main(user_id, train_time=30, test_time=30):
     game = motor_bci_game.Game()
     eeg = EEG(user_id, game)
     gathering = eeg.gather_data()  # runs in background
-    # eeg.build_model(classifier='CNN')  # runs in background
+    eeg.build_model(classifier=classifier)#, model_location="cnn_model_8_11_22_32")  # runs in background
     game.run_keyboard(run_time=train_time)  # runs in foreground
-    eeg.running = False  # stop eeg gathering once game completes
+    eeg.running = False
     while gathering.is_alive(): pass
 
-    training = eeg.train(classifier='LDA', include_historical=True)  #, decision_function_shape="ovo")
+    training = eeg.train(classifier=classifier, include_historical=False)#, model_location='cnn_model_8_11_22_32')  #, decision_function_shape="ovo")
     while training.is_alive(): pass
+    eeg.running = False  # stop eeg gathering once game completes
+    time.sleep(5)
 
     print('testing')
     testing = eeg.test(send_to=game.p1.handle_keys)
@@ -406,6 +420,42 @@ def main(user_id, train_time=30, test_time=30):
 
     eeg.close()
     print('scores:', game.e.scores)
+    game.quit()
+    sys.exit()
+
+
+def main_game_2(user_id, train_time=30, test_time=30, classifier='LDA'):
+    import game_2
+
+    while len(user_id) != 2:
+        user_id = str(int(input('please input the user ID provided by the project investigator (Cameron)')))
+        if len(user_id) == 2:
+            print('user_id={}'.format(user_id))
+            break
+        print('user ID must be 2 digits, you put', len(user_id))
+
+    game = game_2.Game()
+    eeg = EEG(user_id, game)
+    gathering = eeg.gather_data()  # runs in background
+    eeg.build_model(classifier=classifier)#, model_location="cnn_model_8_11_22_32")  # runs in background
+    game.run_keyboard(run_time=train_time)  # runs in foreground
+    eeg.running = False
+    while gathering.is_alive(): pass
+
+    training = eeg.train(classifier=classifier, include_historical=False)#, model_location='cnn_model_8_11_22_32')  #, decision_function_shape="ovo")
+    while training.is_alive(): pass
+    eeg.running = False  # stop eeg gathering once game completes
+    # time.sleep(5)
+
+    print('testing')
+    testing = eeg.test(send_to=game.block.handle_keys)
+    game.run_eeg(test_time)
+    eeg.running = False
+    while testing.is_alive():
+        pass
+
+    eeg.close()
+    print('scores:', game.block.scores)
     game.quit()
     sys.exit()
 
@@ -423,7 +473,7 @@ def train_test(user_id):
     game = motor_bci_game.Game()
     eeg = EEG(user_id, game, ignore_lsl=True)
 
-    training = eeg.train(classifier='LDA', include_historical=False)  #, decision_function_shape="ovo")
+    training = eeg.train(classifier='CNN', include_historical=False, model='new_test')  #, decision_function_shape="ovo")
     while training.is_alive(): pass
 
     eeg.close()
@@ -447,7 +497,7 @@ def convert_mi_to_fft(user_id):
 
 
 if __name__ == '__main__':
-    user_id = '10'
+    user_id = '17'
     mode = 2
     if mode == 1:
         good = np.load('users/data/fmi_01_300921_211231.npy')
@@ -465,25 +515,8 @@ if __name__ == '__main__':
         train_test(user_id)
 
     elif mode == 5:
-        x = [0, 0, 1, 1, 1, 1, 1, 1, 1]
-        x = [[i, 2*i, 0, 0, 0] for i in x]
-        y = [0]
-        y = [[i, 2*i, 0, 0, 0] for i in y]
-        for i in range(2, len(x)):
-            y.append([0, 0, 0, 0, 0])
-            y = my_filter(x[:i], y)
-        y = [[i[0], i[1]] for i in y]
-        print(y)
-
-    elif mode == 6:
-        arr = np.arange(44).reshape(4, 11)
-        print(arr)
-        print(normalise_eeg(arr))
-
-        # for i in range(8):
-        #     arr.append(i+i*np.arange(8))
-        # print(arr)
-        # prev_dl = lambda: [item for sublist in arr[-1:-5:-1] for item in sublist]
-        # print(prev_dl())
+        main_game_2(user_id=user_id,
+                    train_time=5,
+                    test_time=30)
 
     print('done?')
