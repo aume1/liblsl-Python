@@ -154,7 +154,7 @@ class EEG:
 
         if len(self.filtered) > self.data_length:
             norm = normalise_eeg(self.prev_dl)
-            fft = np.array([np.abs(np.fft.fft(n)) for n in norm]).flatten().tolist()
+            fft = norm#np.array([np.abs(np.fft.fft(n)) for n in norm]).flatten().tolist()
             self.fft += [fft + self.filtered[-1][-2:]]
 
     def mi_to_fft(self):
@@ -219,29 +219,44 @@ class EEG:
 
     def __train(self, classifier='KNN', include_historical=False, **kwargs):
         print('data recording complete. building model... (this may take a few moments)')
-        hist_fft = [f for f in os.listdir('users/data') if 'fft_' + self.user_id in f and 'npy' in f]  # grab historical data for user
+        # hist_fft = [f for f in os.listdir('users/data') if 'fft_' + self.user_id in f and 'npy' in f]  # grab historical data for user
+        #
+        # # take only the most recent data if we don't include_historical
+        # if not include_historical or classifier == 'ANN':
+        #     print('ignoring historical data...')
+        #     hist_fft = [hist_fft[-1]]
+        #
+        # print('loading {}'.format(hist_fft))
+        # data = [np.load('users/data/' + f).tolist()[::5] for f in hist_fft]
+        #
+        # # X = [dat[:][:-2] for dat in data]
+        # # Y_i = [dat[:][-2:] for dat in data]
+        # # Y_o = []
+        # # X_o = []
+        # data_o = []
+        #
+        # # merge historical data together
+        # for i in range(len(data)):
+        #     # Y_o += Y_i[i]
+        #     # X_o += X[i]
+        #     print('data', i, 'shape', np.array(data[i]).shape)
+        #     data_o += data[i]
 
-        # take only the most recent data if we don't include_historical
-        if not include_historical or classifier == 'ANN':
-            print('ignoring historical data...')
-            hist_fft = [hist_fft[-1]]
+        def flatten(t):
+            return [item for sublist in t for item in sublist]
 
-        print('loading {}'.format(hist_fft))
-        data = [np.load('users/data/' + f).tolist()[::5] for f in hist_fft]
+        def get_fmi_dl(index, data, length=100):
+            x = flatten(data[index:index + length, :-3])
+            y = data[index, -2:]
+            print(x)
+            print(y)
+            return [x+y]
 
-        # X = [dat[:][:-2] for dat in data]
-        # Y_i = [dat[:][-2:] for dat in data]
-        # Y_o = []
-        # X_o = []
+        data = self.filtered
         data_o = []
-
-        # merge historical data together
-        for i in range(len(data)):
-            # Y_o += Y_i[i]
-            # X_o += X[i]
-            print('data', i, 'shape', np.array(data[i]).shape)
-            data_o += data[i]
-
+        for line in range(len(data)):
+            data_o += get_fmi_dl(line, data)
+        data_o = data
         print('balancing data')
         # print(data_o)
         print('data shape:', np.array(data_o).shape)
@@ -325,7 +340,7 @@ class EEG:
         elif classifier == "RNN":
             self.clf = models.RNN(**kwargs)
         elif classifier == "CNN":
-            self.clf = models.CNN(**kwargs)
+            self.clf = models.CNN2(**kwargs)
         else:
             print(f'no valid classifier provided ({classifier}). Using KNN')
             self.clf = models.KNN(n_neighbors=3)
@@ -340,9 +355,9 @@ class EEG:
         filt_eeg_file = './users/data/fmi_' + self.user_id + suffix
         np.save(filt_eeg_file, self.filtered)
 
-        print('saving filtered fft data:', np.array(self.fft).shape)
-        fft_eeg_file = './users/data/fft_' + self.user_id + suffix
-        np.save(fft_eeg_file, self.fft)
+        # print('saving filtered fft data:', np.array(self.fft).shape)
+        # fft_eeg_file = './users/data/fft_' + self.user_id + suffix
+        # np.save(fft_eeg_file, self.fft)
 
     def test(self, send_to=None):
         thread = threading.Thread(target=self.__test, args=(send_to, ))
@@ -360,8 +375,8 @@ class EEG:
 
         while self.running:
             self.eeg_sample()
-            if len(self.fft) > self.data_length:
-                pred = self.clf.predict(self.fft[-1][:-2])
+            if len(self.eeg_dataset) > self.data_length:
+                pred = self.clf.predict(self.prev_dl)
                 # if pred[0][2]:
                 #     last_preds += [1]
                 # elif pred[0][1]:
@@ -497,7 +512,7 @@ def convert_mi_to_fft(user_id):
 
 
 if __name__ == '__main__':
-    user_id = '17'
+    user_id = '-1'
     mode = 2
     if mode == 1:
         good = np.load('users/data/fmi_01_300921_211231.npy')
@@ -505,7 +520,7 @@ if __name__ == '__main__':
 
     elif mode == 2:
         main(user_id=user_id,
-             train_time=5*60,
+             train_time=10,
              test_time=60)
 
     elif mode == 3:
