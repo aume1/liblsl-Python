@@ -33,7 +33,9 @@ class LDA(Classifier):
         self.clf = LinearDiscriminantAnalysis()
 
     def fit(self, x, y):
+        # print(y, end=' ')
         y = [data[1] + 2 * data[2] + 3 * data[3] for data in y]  # convert data from the form [_, r, l, lr] to [0, 1, 2, or 3]
+        # print('becomes', y)
         self.clf.fit(x, y)
         return self.clf
 
@@ -45,6 +47,8 @@ class LDA(Classifier):
         # print(f'{np.array(x).ndim=}')
         # print(f'{x=}')
         y = self.clf.predict(x)
+        # preds = self.clf.predict_proba(x)
+        # print(preds, y)
         # print(x)
         y_out = np.empty((len(y), 4))
         for i in range(len(y)):
@@ -186,50 +190,118 @@ class CNN(Classifier):
             self.clf = keras.models.load_model(self.model_location)
             print('loaded {}!'.format(self.model_location))
             for i in range(len(self.clf.layers[:-1])):
-                self.clf.layers[i].trainable = True
+                self.clf.layers[i].trainable = False
             self.clf.summary()
         except:
             self.clf = keras.models.Sequential()
             self.clf.add(keras.layers.Conv1D(filters=50, kernel_size=4, padding='same', activation='relu', input_shape=(100, 8)))
             self.clf.add(keras.layers.BatchNormalization())
-            self.clf.add(keras.layers.MaxPooling1D(4))
-            self.clf.add(keras.layers.Conv1D(20, 4, activation="relu"))
+            self.clf.add(keras.layers.MaxPooling1D(2))
+            self.clf.add(keras.layers.Conv1D(50, 4, activation="relu"))
             self.clf.add(keras.layers.BatchNormalization())
-            self.clf.add(keras.layers.MaxPooling1D(4))
+            self.clf.add(keras.layers.MaxPooling1D(2))
+            self.clf.add(keras.layers.Conv1D(50, 4, activation="relu"))
+            self.clf.add(keras.layers.BatchNormalization())
+            self.clf.add(keras.layers.MaxPooling1D(2))
             self.clf.add(keras.layers.Flatten())
+            self.clf.add(keras.layers.Dense(1000, activation="softmax"))
             self.clf.add(keras.layers.Dense(4, activation="softmax"))
             self.clf.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
             self.clf.summary()
             self.clf.save(self.model_location)
+        tf.keras.utils.plot_model(
+            self.clf,
+            to_file="model.png",
+            show_shapes=True,
+            show_dtype=False,
+            show_layer_names=True,
+            rankdir="TB",
+            expand_nested=False,
+            dpi=96,
+            layer_range=None,
+        )
 
     def fit(self, x, y, epochs=100):
         es = keras.callbacks.EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=10)
+        es2 = keras.callbacks.EarlyStopping(monitor='accuracy', mode='max', verbose=1, patience=10)
         print(np.array(x).shape, np.array(y).shape)
         x = np.array(x)
         x = x.reshape((x.shape[0], 100, 8))
         print(np.array(x).shape, np.array(y).shape)
-        self.clf.fit(x, y, epochs=epochs, validation_split=0.2, callbacks=[es])
-        self.clf.save('model')
+        self.clf.fit(x, y, epochs=epochs, validation_split=0.2, callbacks=[es, es2])
+        # self.clf.save('model')
         return self.clf
 
-    def predict(self, x):
+    def predict(self, x, min_probability=None):
         if isinstance(x[0], list):
             x = np.array(x).flatten()
         else:
             x = np.array([x]).flatten()
         x = x.reshape((int(len(x)/800), 100, 8))
         preds = self.clf.predict(x)
-        out = [[1 if i == max(pred) else 0 for i in pred] for pred in preds]
+        # for item in preds:
+        #     for pred in item:
+        #         print('{:.3f} '.format(pred), end='')
+        #     print()
+        out = []
+        for item in preds:
+            if min_probability is not None and max(item) < min_probability:
+                out += [[1, 0, 0, 0]]
+            else:
+                out += [[1 if i == max(item) else 0 for i in item]]
         return out
 
 
+class CNN2(CNN):
+    def __init__(self, **kwargs):
+        if 'model' in kwargs:
+            self.model_location = kwargs['model']
+        else:
+            self.model_location = 'cnn_model2'
+        try:
+            self.clf = keras.models.load_model(self.model_location)
+            print('loaded {}!'.format(self.model_location))
+            for i in range(len(self.clf.layers[:-1])):
+                self.clf.layers[i].trainable = False
+            self.clf.summary()
+        except:
+            self.clf = keras.models.Sequential()
+            self.clf.add(keras.layers.Conv1D(filters=50, kernel_size=4, padding='same', activation='sigmoid', input_shape=(100, 8)))
+            self.clf.add(keras.layers.BatchNormalization())
+            self.clf.add(keras.layers.MaxPooling1D(2))
+            self.clf.add(keras.layers.Conv1D(50, 4, activation="sigmoid"))
+            self.clf.add(keras.layers.BatchNormalization())
+            self.clf.add(keras.layers.MaxPooling1D(2))
+            self.clf.add(keras.layers.Conv1D(50, 4, activation="sigmoid"))
+            self.clf.add(keras.layers.BatchNormalization())
+            self.clf.add(keras.layers.MaxPooling1D(2))
+            self.clf.add(keras.layers.Flatten())
+            self.clf.add(keras.layers.Dense(100, activation="sigmoid"))
+            self.clf.add(keras.layers.Dense(4, activation="softmax"))
+            self.clf.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+            self.clf.summary()
+            self.clf.save(self.model_location)
+        tf.keras.utils.plot_model(
+            self.clf,
+            to_file="model2.png",
+            show_shapes=True,
+            show_dtype=False,
+            show_layer_names=False,
+            rankdir="TB",
+            expand_nested=False,
+            dpi=96,
+            layer_range=None,
+        )
+
+
 if __name__ == "__main__":
+    LDA().fit([], [[0, 0], [0, 1], [1, 0], [1, 1]])
     data = np.array([[x for x in range(800)] for _ in range(4)])
     y = np.array([[0, 0, 1, 0] for _ in range(4)])
-    print(data)
-    print(y)
-    ANN()
-    CNN().fit(data, y)
+    # print(data)
+    # print(y)
+    # ANN()
+    CNN2()#.fit(data, y)
     # preds = [[0.1, 0.1, 0.9, 0.1], [0.2, 0.3, 0.4, 0.9]]
     # out = [[1 if i == max(pred) else 0 for i in pred] for pred in preds]
     # print(preds)
