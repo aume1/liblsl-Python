@@ -223,12 +223,12 @@ class CNN(Classifier):
 
     def fit(self, x, y, epochs=100):
         es = keras.callbacks.EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=10)
-        es2 = keras.callbacks.EarlyStopping(monitor='accuracy', mode='max', verbose=1, patience=10)
+        # es2 = keras.callbacks.EarlyStopping(monitor='accuracy', mode='max', verbose=1, patience=10)
         print(np.array(x).shape, np.array(y).shape)
         x = np.array(x)
         x = x.reshape((x.shape[0], 100, 8))
         print(np.array(x).shape, np.array(y).shape)
-        self.clf.fit(x, y, epochs=epochs, validation_split=0.2, callbacks=[es, es2])
+        self.clf.fit(x, y, epochs=epochs, validation_split=0.2, callbacks=[es])
         # self.clf.save('model')
         return self.clf
 

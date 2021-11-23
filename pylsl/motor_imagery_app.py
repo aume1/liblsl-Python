@@ -246,17 +246,16 @@ class EEG:
             return [item for sublist in t for item in sublist]
 
         def get_fmi_dl(index, data, length=100):
-            x = flatten(data[index:index + length, :-3])
-            y = data[index, -2:]
-            print(x)
-            print(y)
-            return [x+y]
+            np_fmi = np.array(data[index:index + length])
+            x = flatten(np_fmi[:, :-3].tolist())
+            y = np_fmi[-1, -2:].tolist()
+            return [x + y]
 
         data = self.filtered
         data_o = []
-        for line in range(len(data)):
+        for line in range(len(data)-100):
             data_o += get_fmi_dl(line, data)
-        data_o = data
+        # data_o = data
         print('balancing data')
         # print(data_o)
         print('data shape:', np.array(data_o).shape)
@@ -355,9 +354,9 @@ class EEG:
         filt_eeg_file = './users/data/fmi_' + self.user_id + suffix
         np.save(filt_eeg_file, self.filtered)
 
-        # print('saving filtered fft data:', np.array(self.fft).shape)
-        # fft_eeg_file = './users/data/fft_' + self.user_id + suffix
-        # np.save(fft_eeg_file, self.fft)
+        print('saving filtered fft data:', np.array(self.fft).shape)
+        fft_eeg_file = './users/data/fft_' + self.user_id + suffix
+        np.save(fft_eeg_file, self.fft)
 
     def test(self, send_to=None):
         thread = threading.Thread(target=self.__test, args=(send_to, ))
@@ -373,10 +372,18 @@ class EEG:
         self.fft = []
         last_preds = []
 
+        def flatten(t):
+            return [item for sublist in t for item in sublist]
+
+        def get_fmi_dl(index, data, length=100):
+            np_fmi = np.array(data[index:index + length])
+            x = flatten(np_fmi[:, :-3].tolist())
+            return [x]
+
         while self.running:
             self.eeg_sample()
-            if len(self.eeg_dataset) > self.data_length:
-                pred = self.clf.predict(self.prev_dl)
+            if len(self.filtered) > self.data_length:
+                pred = self.clf.predict(get_fmi_dl(-101, self.filtered))
                 # if pred[0][2]:
                 #     last_preds += [1]
                 # elif pred[0][1]:
@@ -439,7 +446,7 @@ def main(user_id, train_time=30, test_time=30, classifier='LDA'):
     sys.exit()
 
 
-def main_game_2(user_id, train_time=30, test_time=30, classifier='LDA'):
+def main_game_2(user_id, train_time=30, test_time=30, classifier='CNN'):
     import game_2
 
     while len(user_id) != 2:
@@ -513,7 +520,7 @@ def convert_mi_to_fft(user_id):
 
 if __name__ == '__main__':
     user_id = '-1'
-    mode = 2
+    mode = 5
     if mode == 1:
         good = np.load('users/data/fmi_01_300921_211231.npy')
         print(pd.DataFrame(good))
@@ -531,7 +538,7 @@ if __name__ == '__main__':
 
     elif mode == 5:
         main_game_2(user_id=user_id,
-                    train_time=5,
+                    train_time=30,
                     test_time=30)
 
     print('done?')
