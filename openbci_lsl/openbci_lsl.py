@@ -53,5 +53,5 @@ def main(argv):
     
 
 if __name__ == '__main__':
-  main(['COM6', '--stream'])
+  main(['COM8', '--stream'])
   # main(sys.argv[1:])

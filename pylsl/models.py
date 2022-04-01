@@ -4,6 +4,7 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn import svm
 from tensorflow import keras
 import tensorflow as tf
+import pickle
 
 
 class Classifier:
@@ -14,7 +15,7 @@ class Classifier:
     def predict(self, x): return
 
 
-class KNN(Classifier):
+class KNN1(Classifier):
     def __init__(self, **kwargs):
         self.clf = KNeighborsClassifier(**kwargs)
 
@@ -28,7 +29,82 @@ class KNN(Classifier):
         return self.model.predict(x)
 
 
+class KNN(Classifier):
+    def __init__(self, **kwargs):
+        self.trained = False
+        if 'model' in kwargs and kwargs['model'] != '':
+            print('loading model from', kwargs['model'])
+            with open(kwargs['model'], 'rb') as file:
+                self.model = pickle.load(file)
+            self.trained = True
+        else:
+            if 'model' in kwargs:
+                del kwargs['model']
+            self.clf = KNeighborsClassifier(**kwargs)
+        print('classifier created')
+
+    def fit(self, x, y, save_location=None):
+        if not self.trained:
+            self.model = self.clf.fit(x, y)
+            if save_location is not None:
+                with open('models/full_models/knnpickle_file_full', 'wb') as knnPickle:
+                    pickle.dump(self.model, knnPickle)
+        else:
+            print('loaded model, not training')
+        return self.model
+
+    def predict(self, x):
+        if len(np.array(x).shape) == 0:
+            x = [x]
+        return self.model.predict(x)
+
+
 class LDA(Classifier):
+    def __init__(self, **kwargs):
+        self.trained = False
+        if 'model' in kwargs:
+            print('loading model from', kwargs['model'])
+            self.clf = pickle.load(open(kwargs['model'], 'rb'))
+            self.trained = True
+        else:
+            print('building new LDA')
+            self.clf = LinearDiscriminantAnalysis()
+
+    def fit(self, x, y, save_location=None):
+        print('fitting and', '' if save_location else 'not', 'saving data')
+        if not self.trained:
+            y = [data[1] + 2 * data[2] + 3 * data[3] for data in y]  # convert data from the form [_, r, l, lr] to [0, 1, 2, or 3]
+            self.clf.fit(x, y)
+            if save_location is not None:
+                with open('ldapickle_file_full', 'wb') as ldaPickle:
+                    pickle.dump(self.clf, ldaPickle)
+        else:
+            print('loaded model, not training')
+        return self.clf
+
+    def predict(self, x):
+        if x is None or len(x) == 0:
+            return [[0, 0, 0, 0]]
+        if np.array(x).ndim == 1:
+            x = [x]
+        y = self.clf.predict(x)
+        y_out = np.empty((len(y), 4))
+        for i in range(len(y)):
+            if y[i] == 0:
+                y_out[i] = [1, 0, 0, 0]
+            elif y[i] == 1:
+                y_out[i] = [0, 1, 0, 0]
+            elif y[i] == 2:
+                y_out[i] = [0, 0, 1, 0]
+            elif y[i] == 3:
+                y_out[i] = [0, 0, 0, 1]
+            else:
+                y_out[i] = [0, 0, 0, 0]
+        # print(y_out)
+        return y_out
+
+
+class LDA1(Classifier):
     def __init__(self):
         self.clf = LinearDiscriminantAnalysis()
 
@@ -189,8 +265,9 @@ class CNN(Classifier):
         try:
             self.clf = keras.models.load_model(self.model_location)
             print('loaded {}!'.format(self.model_location))
-            for i in range(len(self.clf.layers[:-1])):
-                self.clf.layers[i].trainable = False
+            if 'transfer' in kwargs and kwargs['transfer'] is True:
+                for i in range(len(self.clf.layers[:-1])):
+                    self.clf.layers[i].trainable = False
             self.clf.summary()
         except:
             self.clf = keras.models.Sequential()
@@ -221,7 +298,7 @@ class CNN(Classifier):
             layer_range=None,
         )
 
-    def fit(self, x, y, epochs=100):
+    def fit(self, x, y, epochs=50):
         es = keras.callbacks.EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=10)
         # es2 = keras.callbacks.EarlyStopping(monitor='accuracy', mode='max', verbose=1, patience=10)
         print(np.array(x).shape, np.array(y).shape)
@@ -256,31 +333,17 @@ class CNN2(CNN):
     def __init__(self, **kwargs):
         if 'model' in kwargs:
             self.model_location = kwargs['model']
+            print('trying to load', self.model_location)
         else:
             self.model_location = 'cnn_model2'
-        try:
-            self.clf = keras.models.load_model(self.model_location)
-            print('loaded {}!'.format(self.model_location))
-            for i in range(len(self.clf.layers[:-1])):
-                self.clf.layers[i].trainable = False
-            self.clf.summary()
-        except:
-            self.clf = keras.models.Sequential()
-            self.clf.add(keras.layers.Conv1D(filters=50, kernel_size=4, padding='same', activation='sigmoid', input_shape=(100, 8)))
-            self.clf.add(keras.layers.BatchNormalization())
-            self.clf.add(keras.layers.MaxPooling1D(2))
-            self.clf.add(keras.layers.Conv1D(50, 4, activation="sigmoid"))
-            self.clf.add(keras.layers.BatchNormalization())
-            self.clf.add(keras.layers.MaxPooling1D(2))
-            self.clf.add(keras.layers.Conv1D(50, 4, activation="sigmoid"))
-            self.clf.add(keras.layers.BatchNormalization())
-            self.clf.add(keras.layers.MaxPooling1D(2))
-            self.clf.add(keras.layers.Flatten())
-            self.clf.add(keras.layers.Dense(100, activation="sigmoid"))
-            self.clf.add(keras.layers.Dense(4, activation="softmax"))
-            self.clf.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
-            self.clf.summary()
-            self.clf.save(self.model_location)
+        # try:
+        self.clf = keras.models.load_model(self.model_location)
+        print('loaded {}!'.format(self.model_location))
+        for i in range(len(self.clf.layers[:-1])):
+            self.clf.layers[i].trainable = False
+        self.clf.summary()
+        # except:
+        #     exit()
         tf.keras.utils.plot_model(
             self.clf,
             to_file="model2.png",
@@ -295,13 +358,14 @@ class CNN2(CNN):
 
 
 if __name__ == "__main__":
-    LDA().fit([], [[0, 0], [0, 1], [1, 0], [1, 1]])
-    data = np.array([[x for x in range(800)] for _ in range(4)])
-    y = np.array([[0, 0, 1, 0] for _ in range(4)])
-    # print(data)
-    # print(y)
-    # ANN()
-    CNN2()#.fit(data, y)
+    KNN(model='models/full_models/knnpickle_file_full')
+    # LDA().fit([], [[0, 0], [0, 1], [1, 0], [1, 1]])
+    # data = np.array([[x for x in range(800)] for _ in range(4)])
+    # y = np.array([[0, 0, 1, 0] for _ in range(4)])
+    # # print(data)
+    # # print(y)
+    # # ANN()
+    # CNN2()#.fit(data, y)
     # preds = [[0.1, 0.1, 0.9, 0.1], [0.2, 0.3, 0.4, 0.9]]
     # out = [[1 if i == max(pred) else 0 for i in pred] for pred in preds]
     # print(preds)

@@ -159,7 +159,7 @@ class Game:
     def start(self):
         import threading
         self.running = True
-        threading.Thread(target=self.run).start()
+        threading.Thread(target=self.run_keyboard).start()
 
     def iter(self):
         print(pygame.event.get())

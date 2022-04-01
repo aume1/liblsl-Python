@@ -20,6 +20,7 @@ from datetime import datetime
 import sys
 import os
 import models
+import pywt
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 warnings.filterwarnings('error')
@@ -133,6 +134,7 @@ class EEG:
 
         self.running = False
         self.clf = None
+        self.acc = 0
 
     @property
     def prev_dl(self):
@@ -154,7 +156,8 @@ class EEG:
 
         if len(self.filtered) > self.data_length:
             norm = normalise_eeg(self.prev_dl)
-            fft = norm#np.array([np.abs(np.fft.fft(n)) for n in norm]).flatten().tolist()
+            fft = np.array([np.abs(np.fft.fft(n)) for n in norm]).flatten().tolist()
+            # fft = normalise_list(np.array([pywt.dwt(n, 'db2') for n in norm])[:100].flatten())
             self.fft += [fft + self.filtered[-1][-2:]]
 
     def mi_to_fft(self):
@@ -297,7 +300,11 @@ class EEG:
             print('no training data provided')
             return
 
-        X_train, X_test, Y_train, Y_test = model_selection.train_test_split(X, Y, test_size=0.3, random_state=42)
+        def train_test_split(X, Y, test_size):
+            stop_idx = int(len(Y) * test_size)
+            return X[:stop_idx], X[stop_idx:], Y[:stop_idx], Y[stop_idx:]
+
+        X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.3)
         # if classifier == 'KNN':
         #     self.clf = models.KNN(n_neighbors=3, **kwargs)
         # elif classifier == "LDA":
@@ -317,7 +324,10 @@ class EEG:
         self.clf.fit(X_train, Y_train)
         print('analysing model...')
         preds = self.clf.predict(X_test)
-        print('combined acc:', accuracy_score(Y_test, preds))
+        acc = accuracy_score(Y_test, preds)
+        print('combined acc:', acc)
+        self.acc = round(acc, 4)
+        print('combined acc:', self.acc)
         print()
 
         print('model complete.')
@@ -339,7 +349,7 @@ class EEG:
         elif classifier == "RNN":
             self.clf = models.RNN(**kwargs)
         elif classifier == "CNN":
-            self.clf = models.CNN2(**kwargs)
+            self.clf = models.CNN2(transfer=True, **kwargs)
         else:
             print(f'no valid classifier provided ({classifier}). Using KNN')
             self.clf = models.KNN(n_neighbors=3)
@@ -410,7 +420,7 @@ class EEG:
             self.keyboard_inlet.close_stream()
 
 
-def main(user_id, train_time=30, test_time=30, classifier='LDA'):
+def main(user_id, train_time=30, test_time=30, classifier='CNN', model=''):
     import motor_bci_game
 
     while len(user_id) != 2:
@@ -423,10 +433,12 @@ def main(user_id, train_time=30, test_time=30, classifier='LDA'):
     game = motor_bci_game.Game()
     eeg = EEG(user_id, game)
     gathering = eeg.gather_data()  # runs in background
-    eeg.build_model(classifier=classifier)#, model_location="cnn_model_8_11_22_32")  # runs in background
+    eeg.build_model(classifier=classifier, model=model)#, model_location="cnn_model_8_11_22_32")  # runs in background
     game.run_keyboard(run_time=train_time)  # runs in foreground
     eeg.running = False
     while gathering.is_alive(): pass
+    print(game.e.scores)
+    game.e.scores = [0]
 
     training = eeg.train(classifier=classifier, include_historical=False)#, model_location='cnn_model_8_11_22_32')  #, decision_function_shape="ovo")
     while training.is_alive(): pass
@@ -442,6 +454,7 @@ def main(user_id, train_time=30, test_time=30, classifier='LDA'):
 
     eeg.close()
     print('scores:', game.e.scores)
+    print('acc:', eeg.acc)
     game.quit()
     sys.exit()
 
@@ -467,6 +480,9 @@ def main_game_2(user_id, train_time=30, test_time=30, classifier='CNN'):
     training = eeg.train(classifier=classifier, include_historical=False)#, model_location='cnn_model_8_11_22_32')  #, decision_function_shape="ovo")
     while training.is_alive(): pass
     eeg.running = False  # stop eeg gathering once game completes
+
+    print('scores:', game.block.scores)
+    game.block.scores = [0]
     # time.sleep(5)
 
     print('testing')
@@ -478,6 +494,9 @@ def main_game_2(user_id, train_time=30, test_time=30, classifier='CNN'):
 
     eeg.close()
     print('scores:', game.block.scores)
+    total = sum(game.block.scores) + len(game.block.scores) - 1
+    print('total blocks:', total)
+    print('percent caught:', sum(game.block.scores) / total)
     game.quit()
     sys.exit()
 
@@ -519,16 +538,19 @@ def convert_mi_to_fft(user_id):
 
 
 if __name__ == '__main__':
-    user_id = '-1'
-    mode = 5
+    user_id = '-5'  # -9 is cameron post-training recordings, -8 is same for kevin
+    mode = 2
     if mode == 1:
         good = np.load('users/data/fmi_01_300921_211231.npy')
         print(pd.DataFrame(good))
 
     elif mode == 2:
         main(user_id=user_id,
-             train_time=10,
-             test_time=60)
+             train_time=30,
+             test_time=30,
+             model='models/p00_models/cnn_model_2_200',
+             classifier='LDA'
+             )
 
     elif mode == 3:
         convert_mi_to_fft(user_id)
